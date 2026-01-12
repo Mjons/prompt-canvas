@@ -75,7 +75,8 @@ const NODE_COLORS = {
 
 const PromptNode = memo(({ data, selected, id }) => {
   const [copied, setCopied] = useState(false);
-  const { title, content, isExpanded = true, color = "purple" } = data;
+  const [pathCopied, setPathCopied] = useState(false);
+  const { title, content, isExpanded = true, color = "purple", isPathRoot = false } = data;
   const colorScheme = NODE_COLORS[color] || NODE_COLORS.purple;
   const updateNodeInternals = useUpdateNodeInternals();
 
@@ -108,6 +109,13 @@ const PromptNode = memo(({ data, selected, id }) => {
   const handleDuplicate = (e) => {
     e.stopPropagation();
     window.dispatchEvent(new CustomEvent("duplicateNode", { detail: { id } }));
+  };
+
+  const handleCopyPath = (e) => {
+    e.stopPropagation();
+    window.dispatchEvent(new CustomEvent("copyPathFromNode", { detail: { id } }));
+    setPathCopied(true);
+    setTimeout(() => setPathCopied(false), 1500);
   };
 
   // Collapsed view - compact pill
@@ -275,6 +283,51 @@ const PromptNode = memo(({ data, selected, id }) => {
                 </svg>
               )}
             </button>
+
+            {isPathRoot && (
+              <button
+                onClick={handleCopyPath}
+                className={`
+                  p-1 rounded-md transition-all duration-200
+                  ${
+                    pathCopied
+                      ? "bg-emerald-500/20 text-emerald-400"
+                      : "hover:bg-accent/20 text-accent hover:text-accent"
+                  }
+                `}
+                title="Copy path from this node"
+              >
+                {pathCopied ? (
+                  <svg
+                    className="w-3.5 h-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                ) : (
+                  <svg
+                    className="w-3.5 h-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 5l7 7-7 7M5 5l7 7-7 7"
+                    />
+                  </svg>
+                )}
+              </button>
+            )}
 
             <button
               onClick={handleDuplicate}

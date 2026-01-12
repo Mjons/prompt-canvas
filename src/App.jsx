@@ -198,7 +198,7 @@ function Flow() {
     setSidebarOpen(false);
   }, []);
 
-  // Compute child nodes for each group
+  // Compute child nodes for each group and identify path roots
   const nodesWithChildren = useMemo(() => {
     const childrenByGroup = {};
 
@@ -212,8 +212,17 @@ function Flow() {
       }
     });
 
+    // Compute path roots (nodes with outgoing edges but no incoming edges)
+    const hasOutgoing = new Set(edges.map((e) => e.source));
+    const hasIncoming = new Set(edges.map((e) => e.target));
+    const pathRoots = new Set(
+      [...hasOutgoing].filter((id) => !hasIncoming.has(id))
+    );
+
     // Update group nodes with their children data and handle visibility
     return nodes.map((node) => {
+      const isPathRoot = pathRoots.has(node.id) && node.type !== "group";
+
       if (node.type === "group") {
         const children = childrenByGroup[node.id] || [];
         const isEditMode = node.data?.isEditMode;
@@ -240,6 +249,7 @@ function Flow() {
           return {
             ...node,
             hidden: true,
+            data: { ...node.data, isPathRoot },
           };
         }
         // When parent is in edit mode, raise zIndex so children are clickable/draggable
@@ -255,16 +265,21 @@ function Flow() {
               ...node.style,
               zIndex: 1000,
             },
+            data: { ...node.data, isPathRoot },
           };
         }
         return {
           ...node,
           hidden: false,
+          data: { ...node.data, isPathRoot },
         };
       }
-      return node;
+      return {
+        ...node,
+        data: { ...node.data, isPathRoot },
+      };
     });
-  }, [nodes]);
+  }, [nodes, edges]);
 
   // Event listeners
   useEffect(() => {
@@ -1213,6 +1228,80 @@ function Flow() {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [nodes, edges]);
+
+  // Copy path starting from a specific node
+  const copyPathFromNode = useCallback(
+    (startNodeId) => {
+      // Filter to only active edges
+      const activeEdges = edges.filter((e) => e.data?.active !== false);
+
+      // Build adjacency list from active edges
+      const adjacency = {};
+      activeEdges.forEach((edge) => {
+        if (!adjacency[edge.source]) adjacency[edge.source] = [];
+        adjacency[edge.source].push(edge.target);
+      });
+
+      // BFS to collect nodes in order, starting from the specified node
+      const visited = new Set();
+      const orderedNodes = [];
+      const queue = [startNodeId];
+
+      while (queue.length > 0) {
+        const nodeId = queue.shift();
+        if (visited.has(nodeId)) continue;
+        visited.add(nodeId);
+
+        const node = nodes.find((n) => n.id === nodeId);
+        if (node && node.type !== "group") {
+          orderedNodes.push(node);
+        }
+
+        // Add connected nodes via active edges to queue
+        const connected = adjacency[nodeId] || [];
+        connected.forEach((targetId) => {
+          if (!visited.has(targetId)) {
+            queue.push(targetId);
+          }
+        });
+      }
+
+      // Generate combined prompt
+      const combinedPrompt = orderedNodes
+        .map((node) => {
+          if (node.type === "template") {
+            const template = node.data?.template || "";
+            const values = node.data?.values || {};
+            return template.replace(
+              /\{\{(\w+)\}\}/g,
+              (_, key) => values[key] || key
+            );
+          } else {
+            return node.data?.content || "";
+          }
+        })
+        .filter((content) => content.trim())
+        .join("\n\n");
+
+      if (combinedPrompt) {
+        navigator.clipboard.writeText(combinedPrompt);
+      }
+    },
+    [nodes, edges]
+  );
+
+  // Event listener for copying path from a specific node
+  useEffect(() => {
+    const handleCopyPathFromNode = (event) => {
+      const { id } = event.detail;
+      copyPathFromNode(id);
+    };
+
+    window.addEventListener("copyPathFromNode", handleCopyPathFromNode);
+    return () => {
+      window.removeEventListener("copyPathFromNode", handleCopyPathFromNode);
+    };
+  }, [copyPathFromNode]);
 
   return (
     <div className="w-screen h-screen flex bg-canvas">
